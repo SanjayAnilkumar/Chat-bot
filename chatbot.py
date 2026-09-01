@@ -1,18 +1,9 @@
-# ============================================================
-# GPT-OSS 20B NORMAL CHATBOT
-# GROQ API + GRADIO 6
-# GOOGLE COLAB
-# ============================================================
-
-!pip -q install -U groq gradio
-
-
-import gradio as gr
+import streamlit as st
 from groq import Groq
 
-
 # ============================================================
-# CONFIGURATION
+# GPT-OSS 20B CHATBOT
+# STREAMLIT + GROQ API
 # ============================================================
 
 MODEL = "openai/gpt-oss-20b"
@@ -29,46 +20,228 @@ Rules:
 - Be concise unless the user asks for detailed information.
 """
 
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
+
+st.set_page_config(
+    page_title="GPT-OSS 20B Chatbot",
+    page_icon="🤖",
+    layout="wide"
+)
 
 # ============================================================
-# CHAT FUNCTION
+# CUSTOM CSS
 # ============================================================
 
-def chat(message, history, api_key, temperature, reasoning):
+st.markdown("""
+<style>
 
-    # Make sure history exists
-    if history is None:
-        history = []
+.main {
+    background-color: #0e1117;
+}
 
-    # Check API key
-    if not api_key or not api_key.strip():
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+}
 
-        history = history + [
-            {
-                "role": "user",
-                "content": message
-            },
-            {
-                "role": "assistant",
-                "content": "⚠️ Please enter your Groq API key."
-            }
-        ]
+.title {
+    font-size: 40px;
+    font-weight: 700;
+    margin-bottom: 0px;
+}
 
-        return history, ""
+.subtitle {
+    font-size: 16px;
+    color: #9ca3af;
+    margin-bottom: 25px;
+}
+
+.chat-box {
+    border-radius: 12px;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.markdown(
+    '<div class="title">🤖 GPT-OSS 20B Chatbot</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">⚡ Powered by Groq</div>',
+    unsafe_allow_html=True
+)
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+with st.sidebar:
+
+    st.header("⚙️ Settings")
+
+    # --------------------------------------------------------
+    # API KEY
+    # --------------------------------------------------------
+
+    api_key = st.text_input(
+        "Groq API Key",
+        type="password",
+        placeholder="gsk_..."
+    )
+
+    st.caption(
+        "Your API key is used only for this session."
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # TEMPERATURE
+    # --------------------------------------------------------
+
+    temperature = st.slider(
+        "🌡️ Temperature",
+        min_value=0.0,
+        max_value=1.5,
+        value=0.7,
+        step=0.1
+    )
+
+    # --------------------------------------------------------
+    # REASONING
+    # --------------------------------------------------------
+
+    reasoning = st.selectbox(
+        "🧠 Reasoning Effort",
+        options=[
+            "low",
+            "medium",
+            "high"
+        ],
+        index=1
+    )
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # MODEL INFO
+    # --------------------------------------------------------
+
+    st.markdown("### 🧠 Model")
+
+    st.code(
+        "openai/gpt-oss-20b"
+    )
+
+    st.markdown("### ⚡ Provider")
+
+    st.write("Groq API")
+
+    st.markdown("### 💬 Type")
+
+    st.write("Normal AI Chatbot")
+
+    st.markdown("### 🧠 Memory")
+
+    st.write("Conversation History")
+
+    st.divider()
+
+    # --------------------------------------------------------
+    # CLEAR CHAT
+    # --------------------------------------------------------
+
+    if st.button(
+        "🗑️ Clear Conversation",
+        use_container_width=True
+    ):
+        st.session_state.messages = []
+        st.rerun()
+
+# ============================================================
+# DISPLAY PREVIOUS MESSAGES
+# ============================================================
+
+for message in st.session_state.messages:
+
+    with st.chat_message(message["role"]):
+
+        st.markdown(
+            message["content"]
+        )
+
+# ============================================================
+# CHAT INPUT
+# ============================================================
+
+user_message = st.chat_input(
+    "Type your message..."
+)
+
+# ============================================================
+# PROCESS MESSAGE
+# ============================================================
+
+if user_message:
+
+    # --------------------------------------------------------
+    # CHECK API KEY
+    # --------------------------------------------------------
+
+    if not api_key.strip():
+
+        st.error(
+            "⚠️ Please enter your Groq API key in the sidebar."
+        )
+
+        st.stop()
+
+    # --------------------------------------------------------
+    # ADD USER MESSAGE
+    # --------------------------------------------------------
+
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": user_message
+        }
+    )
+
+    # Display user message
+    with st.chat_message("user"):
+
+        st.markdown(
+            user_message
+        )
+
+    # --------------------------------------------------------
+    # CREATE GROQ CLIENT
+    # --------------------------------------------------------
 
     try:
-
-        # ------------------------------------------------------
-        # GROQ CLIENT
-        # ------------------------------------------------------
 
         client = Groq(
             api_key=api_key.strip()
         )
 
-        # ------------------------------------------------------
-        # BUILD MESSAGES FOR GROQ
-        # ------------------------------------------------------
+        # ----------------------------------------------------
+        # BUILD MESSAGE HISTORY
+        # ----------------------------------------------------
 
         messages = [
             {
@@ -77,307 +250,85 @@ def chat(message, history, api_key, temperature, reasoning):
             }
         ]
 
-        # ------------------------------------------------------
-        # CONVERT GRADIO HISTORY
-        # ------------------------------------------------------
+        for message in st.session_state.messages:
 
-        for item in history:
+            messages.append(
+                {
+                    "role": message["role"],
+                    "content": message["content"]
+                }
+            )
 
-            # Gradio message dictionary
-            if isinstance(item, dict):
+        # ----------------------------------------------------
+        # ASSISTANT RESPONSE
+        # ----------------------------------------------------
 
-                role = item.get("role")
-                content = item.get("content")
+        with st.chat_message("assistant"):
 
-                if role in ["user", "assistant"]:
+            response_placeholder = st.empty()
 
-                    if isinstance(content, str):
+            with st.spinner("Thinking..."):
 
-                        messages.append({
-                            "role": role,
-                            "content": content
-                        })
+                response = client.chat.completions.create(
 
-            # Handle ChatMessage objects if present
-            elif hasattr(item, "role") and hasattr(item, "content"):
+                    model=MODEL,
 
-                role = item.role
-                content = item.content
+                    messages=messages,
 
-                if role in ["user", "assistant"]:
+                    temperature=float(
+                        temperature
+                    ),
 
-                    if isinstance(content, str):
+                    reasoning_effort=reasoning,
 
-                        messages.append({
-                            "role": role,
-                            "content": content
-                        })
+                    max_completion_tokens=4096
+                )
 
-        # ------------------------------------------------------
-        # CURRENT USER MESSAGE
-        # ------------------------------------------------------
+                answer = (
+                    response.choices[0]
+                    .message
+                    .content
+                )
 
-        messages.append({
-            "role": "user",
-            "content": message
-        })
+                if not answer:
 
-        # ------------------------------------------------------
-        # CALL GROQ
-        # ------------------------------------------------------
+                    answer = (
+                        "I couldn't generate a response."
+                    )
 
-        response = client.chat.completions.create(
+            response_placeholder.markdown(
+                answer
+            )
 
-            model=MODEL,
+        # ----------------------------------------------------
+        # SAVE ASSISTANT RESPONSE
+        # ----------------------------------------------------
 
-            messages=messages,
-
-            temperature=float(temperature),
-
-            reasoning_effort=reasoning,
-
-            max_completion_tokens=4096
-        )
-
-        # ------------------------------------------------------
-        # GET RESPONSE
-        # ------------------------------------------------------
-
-        answer = response.choices[0].message.content
-
-        if not answer:
-
-            answer = "I couldn't generate a response."
-
-        # ------------------------------------------------------
-        # ADD BOTH MESSAGES TO HISTORY
-        # ------------------------------------------------------
-
-        new_history = history + [
-
-            {
-                "role": "user",
-                "content": message
-            },
-
+        st.session_state.messages.append(
             {
                 "role": "assistant",
                 "content": answer
             }
+        )
 
-        ]
-
-        # IMPORTANT:
-        # Return the COMPLETE history.
-        # This is required for Gradio 6.
-        return new_history, ""
+    # --------------------------------------------------------
+    # ERROR HANDLING
+    # --------------------------------------------------------
 
     except Exception as e:
 
-        error = (
+        error_message = (
             "❌ Groq API Error\n\n"
-            + str(e)
+            f"{str(e)}"
         )
 
-        new_history = history + [
+        with st.chat_message("assistant"):
 
-            {
-                "role": "user",
-                "content": message
-            },
-
-            {
-                "role": "assistant",
-                "content": error
-            }
-
-        ]
-
-        return new_history, ""
-
-
-# ============================================================
-# CLEAR CHAT
-# ============================================================
-
-def clear_chat():
-    return []
-
-
-# ============================================================
-# UI
-# ============================================================
-
-with gr.Blocks(
-    title="GPT-OSS 20B Chatbot"
-) as demo:
-
-    # --------------------------------------------------------
-    # HEADER
-    # --------------------------------------------------------
-
-    gr.Markdown(
-        """
-        # 🤖 GPT-OSS 20B Chatbot
-
-        ### ⚡ Powered by Groq
-        """
-    )
-
-    # --------------------------------------------------------
-    # MAIN LAYOUT
-    # --------------------------------------------------------
-
-    with gr.Row():
-
-        # ====================================================
-        # CHAT
-        # ====================================================
-
-        with gr.Column(
-            scale=4
-        ):
-
-            chatbot = gr.Chatbot(
-                label="AI Assistant",
-                height=550
+            st.error(
+                error_message
             )
 
-            message = gr.Textbox(
-                label="Message",
-                placeholder="Type your message...",
-                lines=2
-            )
+        # Remove the user message if request failed
+        if st.session_state.messages:
 
-            with gr.Row():
-
-                send = gr.Button(
-                    "🚀 Send",
-                    variant="primary"
-                )
-
-                clear = gr.Button(
-                    "🗑️ Clear"
-                )
-
-        # ====================================================
-        # SETTINGS
-        # ====================================================
-
-        with gr.Column(
-            scale=1
-        ):
-
-            gr.Markdown(
-                "## ⚙️ Settings"
-            )
-
-            api_key = gr.Textbox(
-                label="Groq API Key",
-                placeholder="gsk_...",
-                type="password"
-            )
-
-            temperature = gr.Slider(
-                minimum=0,
-                maximum=1.5,
-                value=0.7,
-                step=0.1,
-                label="Temperature"
-            )
-
-            reasoning = gr.Dropdown(
-                choices=[
-                    "low",
-                    "medium",
-                    "high"
-                ],
-                value="medium",
-                label="Reasoning Effort"
-            )
-
-            gr.Markdown(
-                """
-                ### 🧠 Model
-
-                `openai/gpt-oss-20b`
-
-                ### ⚡ Provider
-
-                Groq API
-
-                ### 💬 Type
-
-                Normal AI Chatbot
-
-                ### 🧠 Memory
-
-                Conversation History
-                """
-            )
-
-    # ========================================================
-    # SEND
-    # ========================================================
-
-    send.click(
-        chat,
-        inputs=[
-            message,
-            chatbot,
-            api_key,
-            temperature,
-            reasoning
-        ],
-        outputs=[
-            chatbot,
-            message
-        ]
-    )
-
-    # ========================================================
-    # ENTER
-    # ========================================================
-
-    message.submit(
-        chat,
-        inputs=[
-            message,
-            chatbot,
-            api_key,
-            temperature,
-            reasoning
-        ],
-        outputs=[
-            chatbot,
-            message
-        ]
-    )
-
-    # ========================================================
-    # CLEAR
-    # ========================================================
-
-    clear.click(
-        clear_chat,
-        outputs=chatbot
-    )
-
-
-# ============================================================
-# LAUNCH
-# ============================================================
-
-print()
-print("=" * 65)
-print("🚀 GPT-OSS 20B CHATBOT")
-print("=" * 65)
-print()
-print("Your chatbot is starting...")
-print()
-print("Enter your Groq API key in the UI.")
-print()
-
-demo.launch(
-    share=True
-)
+            st.session_state.messages.pop()
