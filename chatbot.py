@@ -7,10 +7,6 @@
 !pip -q install -U groq gradio
 
 
-# ============================================================
-# IMPORTS
-# ============================================================
-
 import gradio as gr
 from groq import Groq
 
@@ -25,12 +21,12 @@ SYSTEM_PROMPT = """
 You are a helpful, intelligent and friendly AI assistant.
 
 Rules:
-- Answer accurately.
+- Answer questions accurately.
 - Explain difficult topics clearly.
 - Use examples when useful.
-- Do not invent facts.
-- Maintain conversation context.
-- Be concise unless the user asks for detail.
+- Do not make up information.
+- Remember the conversation context.
+- Be concise unless the user asks for detailed information.
 """
 
 
@@ -38,31 +34,40 @@ Rules:
 # CHAT FUNCTION
 # ============================================================
 
-def chat(
-    message,
-    history,
-    api_key,
-    temperature,
-    reasoning
-):
+def chat(message, history, api_key, temperature, reasoning):
+
+    # Make sure history exists
+    if history is None:
+        history = []
 
     # Check API key
     if not api_key or not api_key.strip():
 
-        return {
-            "role": "assistant",
-            "content": "⚠️ Please enter your Groq API key."
-        }
+        history = history + [
+            {
+                "role": "user",
+                "content": message
+            },
+            {
+                "role": "assistant",
+                "content": "⚠️ Please enter your Groq API key."
+            }
+        ]
+
+        return history, ""
 
     try:
 
-        # Create Groq client
+        # ------------------------------------------------------
+        # GROQ CLIENT
+        # ------------------------------------------------------
+
         client = Groq(
             api_key=api_key.strip()
         )
 
         # ------------------------------------------------------
-        # CREATE MESSAGES
+        # BUILD MESSAGES FOR GROQ
         # ------------------------------------------------------
 
         messages = [
@@ -73,67 +78,40 @@ def chat(
         ]
 
         # ------------------------------------------------------
-        # ADD GRADIO HISTORY
+        # CONVERT GRADIO HISTORY
         # ------------------------------------------------------
 
-        if history:
+        for item in history:
 
-            for item in history:
+            # Gradio message dictionary
+            if isinstance(item, dict):
 
-                # Gradio 6 messages format
-                if isinstance(item, dict):
+                role = item.get("role")
+                content = item.get("content")
 
-                    role = item.get("role")
-                    content = item.get("content")
+                if role in ["user", "assistant"]:
 
-                    # Only send user/assistant text
-                    if role in ["user", "assistant"]:
+                    if isinstance(content, str):
 
-                        # Handle normal string content
-                        if isinstance(content, str):
+                        messages.append({
+                            "role": role,
+                            "content": content
+                        })
 
-                            messages.append({
-                                "role": role,
-                                "content": content
-                            })
+            # Handle ChatMessage objects if present
+            elif hasattr(item, "role") and hasattr(item, "content"):
 
-                        # Handle Gradio 6 structured content
-                        elif isinstance(content, list):
+                role = item.role
+                content = item.content
 
-                            text_parts = []
+                if role in ["user", "assistant"]:
 
-                            for block in content:
+                    if isinstance(content, str):
 
-                                if isinstance(block, dict):
-
-                                    if block.get("type") == "text":
-
-                                        text_parts.append(
-                                            block.get(
-                                                "text",
-                                                ""
-                                            )
-                                        )
-
-                                elif isinstance(
-                                    block,
-                                    str
-                                ):
-
-                                    text_parts.append(
-                                        block
-                                    )
-
-                            combined = "\n".join(
-                                text_parts
-                            )
-
-                            if combined:
-
-                                messages.append({
-                                    "role": role,
-                                    "content": combined
-                                })
+                        messages.append({
+                            "role": role,
+                            "content": content
+                        })
 
         # ------------------------------------------------------
         # CURRENT USER MESSAGE
@@ -145,7 +123,7 @@ def chat(
         })
 
         # ------------------------------------------------------
-        # GROQ API
+        # CALL GROQ
         # ------------------------------------------------------
 
         response = client.chat.completions.create(
@@ -154,9 +132,7 @@ def chat(
 
             messages=messages,
 
-            temperature=float(
-                temperature
-            ),
+            temperature=float(temperature),
 
             reasoning_effort=reasoning,
 
@@ -164,32 +140,60 @@ def chat(
         )
 
         # ------------------------------------------------------
-        # RESPONSE
+        # GET RESPONSE
         # ------------------------------------------------------
 
-        answer = (
-            response
-            .choices[0]
-            .message
-            .content
-        )
+        answer = response.choices[0].message.content
 
-        # Return ONLY the new assistant message.
-        # Gradio 6 automatically adds it to history.
-        return {
-            "role": "assistant",
-            "content": answer
-        }
+        if not answer:
+
+            answer = "I couldn't generate a response."
+
+        # ------------------------------------------------------
+        # ADD BOTH MESSAGES TO HISTORY
+        # ------------------------------------------------------
+
+        new_history = history + [
+
+            {
+                "role": "user",
+                "content": message
+            },
+
+            {
+                "role": "assistant",
+                "content": answer
+            }
+
+        ]
+
+        # IMPORTANT:
+        # Return the COMPLETE history.
+        # This is required for Gradio 6.
+        return new_history, ""
 
     except Exception as e:
 
-        return {
-            "role": "assistant",
-            "content": (
-                "❌ Groq API Error:\n\n"
-                + str(e)
-            )
-        }
+        error = (
+            "❌ Groq API Error\n\n"
+            + str(e)
+        )
+
+        new_history = history + [
+
+            {
+                "role": "user",
+                "content": message
+            },
+
+            {
+                "role": "assistant",
+                "content": error
+            }
+
+        ]
+
+        return new_history, ""
 
 
 # ============================================================
@@ -209,7 +213,7 @@ with gr.Blocks(
 ) as demo:
 
     # --------------------------------------------------------
-    # TITLE
+    # HEADER
     # --------------------------------------------------------
 
     gr.Markdown(
@@ -221,13 +225,13 @@ with gr.Blocks(
     )
 
     # --------------------------------------------------------
-    # MAIN ROW
+    # MAIN LAYOUT
     # --------------------------------------------------------
 
     with gr.Row():
 
         # ====================================================
-        # CHAT AREA
+        # CHAT
         # ====================================================
 
         with gr.Column(
@@ -239,10 +243,9 @@ with gr.Blocks(
                 height=550
             )
 
-            # Input
             message = gr.Textbox(
-                placeholder="Type your message...",
                 label="Message",
+                placeholder="Type your message...",
                 lines=2
             )
 
@@ -305,7 +308,7 @@ with gr.Blocks(
 
                 ### 💬 Type
 
-                Normal Chatbot
+                Normal AI Chatbot
 
                 ### 🧠 Memory
 
@@ -314,7 +317,7 @@ with gr.Blocks(
             )
 
     # ========================================================
-    # SEND BUTTON
+    # SEND
     # ========================================================
 
     send.click(
@@ -326,14 +329,14 @@ with gr.Blocks(
             temperature,
             reasoning
         ],
-        outputs=chatbot
-    ).then(
-        lambda: "",
-        outputs=message
+        outputs=[
+            chatbot,
+            message
+        ]
     )
 
     # ========================================================
-    # ENTER KEY
+    # ENTER
     # ========================================================
 
     message.submit(
@@ -345,10 +348,10 @@ with gr.Blocks(
             temperature,
             reasoning
         ],
-        outputs=chatbot
-    ).then(
-        lambda: "",
-        outputs=message
+        outputs=[
+            chatbot,
+            message
+        ]
     )
 
     # ========================================================
@@ -366,13 +369,13 @@ with gr.Blocks(
 # ============================================================
 
 print()
-print("=" * 60)
+print("=" * 65)
 print("🚀 GPT-OSS 20B CHATBOT")
-print("=" * 60)
+print("=" * 65)
 print()
-print("Open the Gradio public URL below.")
-print("Enter your Groq API key.")
-print("Start chatting.")
+print("Your chatbot is starting...")
+print()
+print("Enter your Groq API key in the UI.")
 print()
 
 demo.launch(
