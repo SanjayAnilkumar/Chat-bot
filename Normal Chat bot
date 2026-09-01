@@ -1,0 +1,402 @@
+# ============================================================
+# NORMAL AI CHATBOT
+# GPT-OSS 20B + GROQ API + GRADIO
+# GOOGLE COLAB
+# ============================================================
+# Install packages
+!pip -q install -U groq gradio
+
+
+# ============================================================
+# IMPORTS
+# ============================================================
+
+import gradio as gr
+from groq import Groq
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+MODEL = "openai/gpt-oss-20b"
+
+SYSTEM_PROMPT = """
+You are a helpful, intelligent and friendly AI assistant.
+
+Rules:
+- Answer questions accurately.
+- Explain difficult topics clearly.
+- Use examples when useful.
+- Do not invent facts.
+- Maintain the conversation context.
+- Be concise unless the user asks for a detailed answer.
+"""
+
+
+# ============================================================
+# CHAT FUNCTION
+# ============================================================
+
+def chat(
+    message,
+    history,
+    api_key,
+    temperature,
+    reasoning
+):
+
+    # Check API key
+    if not api_key or not api_key.strip():
+
+        return history, ""
+
+    try:
+
+        # Create Groq client
+        client = Groq(
+            api_key=api_key.strip()
+        )
+
+        # --------------------------------------------------------
+        # CREATE MESSAGE LIST
+        # --------------------------------------------------------
+
+        messages = [
+
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT
+            }
+
+        ]
+
+        # --------------------------------------------------------
+        # ADD PREVIOUS CONVERSATION
+        # --------------------------------------------------------
+
+        if history:
+
+            for item in history:
+
+                # Gradio history format:
+                # [user_message, assistant_message]
+
+                if isinstance(
+                    item,
+                    (list, tuple)
+                ):
+
+                    if len(item) >= 1 and item[0]:
+
+                        messages.append({
+
+                            "role": "user",
+
+                            "content": str(
+                                item[0]
+                            )
+
+                        })
+
+                    if len(item) >= 2 and item[1]:
+
+                        messages.append({
+
+                            "role": "assistant",
+
+                            "content": str(
+                                item[1]
+                            )
+
+                        })
+
+        # --------------------------------------------------------
+        # ADD CURRENT QUESTION
+        # --------------------------------------------------------
+
+        messages.append({
+
+            "role": "user",
+
+            "content": message
+
+        })
+
+        # --------------------------------------------------------
+        # CALL GROQ
+        # --------------------------------------------------------
+
+        response = client.chat.completions.create(
+
+            model=MODEL,
+
+            messages=messages,
+
+            temperature=float(
+                temperature
+            ),
+
+            reasoning_effort=reasoning,
+
+            max_completion_tokens=4096
+
+        )
+
+        # --------------------------------------------------------
+        # GET ANSWER
+        # --------------------------------------------------------
+
+        answer = (
+            response
+            .choices[0]
+            .message
+            .content
+        )
+
+        # --------------------------------------------------------
+        # UPDATE HISTORY
+        # --------------------------------------------------------
+
+        if history is None:
+
+            history = []
+
+        history.append(
+            [message, answer]
+        )
+
+        return history, ""
+
+    except Exception as e:
+
+        error_message = (
+            "❌ Error:\n\n"
+            + str(e)
+        )
+
+        if history is None:
+
+            history = []
+
+        history.append(
+            [message, error_message]
+        )
+
+        return history, ""
+
+
+# ============================================================
+# CLEAR CHAT
+# ============================================================
+
+def clear_chat():
+
+    return []
+
+
+# ============================================================
+# GRADIO UI
+# ============================================================
+
+with gr.Blocks() as demo:
+
+    # --------------------------------------------------------
+    # HEADER
+    # --------------------------------------------------------
+
+    gr.Markdown(
+        """
+        # 🤖 GPT-OSS 20B Chatbot
+
+        ### ⚡ Powered by Groq
+        """
+    )
+
+    # --------------------------------------------------------
+    # MAIN LAYOUT
+    # --------------------------------------------------------
+
+    with gr.Row():
+
+        # ====================================================
+        # CHAT AREA
+        # ====================================================
+
+        with gr.Column(
+            scale=4
+        ):
+
+            chatbot = gr.Chatbot(
+                label="AI Assistant",
+                height=550
+            )
+
+            with gr.Row():
+
+                message = gr.Textbox(
+
+                    placeholder=
+                    "Type your message...",
+
+                    show_label=False,
+
+                    lines=2,
+
+                    scale=8
+
+                )
+
+                send = gr.Button(
+
+                    "🚀 Send",
+
+                    scale=2
+
+                )
+
+            clear = gr.Button(
+                "🗑️ Clear Chat"
+            )
+
+        # ====================================================
+        # SETTINGS
+        # ====================================================
+
+        with gr.Column(
+            scale=1
+        ):
+
+            gr.Markdown(
+                "## ⚙️ Settings"
+            )
+
+            api_key = gr.Textbox(
+
+                label="Groq API Key",
+
+                placeholder="gsk_...",
+
+                type="password"
+
+            )
+
+            temperature = gr.Slider(
+
+                minimum=0,
+
+                maximum=1.5,
+
+                value=0.7,
+
+                step=0.1,
+
+                label="Temperature"
+
+            )
+
+            reasoning = gr.Dropdown(
+
+                choices=[
+                    "low",
+                    "medium",
+                    "high"
+                ],
+
+                value="medium",
+
+                label="Reasoning Effort"
+
+            )
+
+            gr.Markdown(
+                """
+                ### 🧠 Model
+
+                `openai/gpt-oss-20b`
+
+                ### ⚡ Provider
+
+                Groq API
+
+                ### 💬 Type
+
+                Normal AI Chatbot
+
+                ### 🧠 Memory
+
+                Conversation history
+                """
+            )
+
+
+    # ========================================================
+    # BUTTON EVENTS
+    # ========================================================
+
+    send.click(
+
+        chat,
+
+        inputs=[
+            message,
+            chatbot,
+            api_key,
+            temperature,
+            reasoning
+        ],
+
+        outputs=[
+            chatbot,
+            message
+        ]
+
+    )
+
+    message.submit(
+
+        chat,
+
+        inputs=[
+            message,
+            chatbot,
+            api_key,
+            temperature,
+            reasoning
+        ],
+
+        outputs=[
+            chatbot,
+            message
+        ]
+
+    )
+
+    clear.click(
+
+        clear_chat,
+
+        outputs=chatbot
+
+    )
+
+
+# ============================================================
+# LAUNCH
+# ============================================================
+
+print()
+print("=" * 60)
+print("🚀 GPT-OSS 20B CHATBOT")
+print("=" * 60)
+print()
+print("Open the public Gradio link below.")
+print("Enter your Groq API key in the UI.")
+print("Then start chatting.")
+print()
+
+demo.launch(
+    share=True
+)
+
+
